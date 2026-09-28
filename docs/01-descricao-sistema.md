@@ -1,7 +1,5 @@
 # Descrição do sistema
 
-Legenda: `[PREMISSA]` = adotado para permitir o desenho, precisa de confirmação. `[LACUNA]` = informação não fornecida, sem premissa segura.
-
 ## 1. Escopo
 
 O sistema é um portal web usado por times de negócio e marketing para:
