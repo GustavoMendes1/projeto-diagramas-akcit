@@ -1,0 +1,69 @@
+---
+title: Jornada crítica — Do agendamento à entrega e leitura
+---
+sequenceDiagram
+    autonumber
+    actor Op as Operador
+    participant API as API de Campanhas
+    participant Sch as Scheduler
+    participant Bus as Broker
+    participant Orq as Orquestrador
+    participant Con as Consentimento
+    participant DB as Ledger de Mensagens
+    participant W as Send Worker
+    participant Q as Controle de Quotas
+    participant GW as Gateway de Canais
+    participant P as Provedor (BSP ou RCS)
+    participant Whk as Webhook Ingestor
+    participant St as Processador de Status
+
+    Op->>API: Cria campanha (template, segmento, canal, janela)
+    API->>API: Valida template aprovado e canal habilitado
+    Op->>API: Aprova e agenda
+    API->>Sch: Registra agendamento
+    Note over API,Sch: Fim do fluxo de campanha.<br/>Nenhuma mensagem existe ainda.
+
+    Sch->>Bus: Publica CampaignDispatchRequested
+    Bus->>Orq: Entrega evento
+    Orq->>Con: Solicita destinatários com opt-in vigente
+    Con-->>Orq: Lista elegível (opt-outs removidos)
+    Orq->>DB: Cria mensagens PENDING com idempotency_key
+    Orq->>Bus: Publica SendMessage em lotes
+
+    Bus->>W: Entrega SendMessage
+    W->>DB: Reserva envio pela idempotency_key
+    alt Mensagem já reservada ou enviada
+        DB-->>W: Duplicada
+        W->>Bus: Ack e descarta
+    else Mensagem nova
+        W->>Q: Solicita permissão (tier, limite, janela)
+        alt Sem quota disponível
+            Q-->>W: Negado
+            W->>Bus: Reenfileira com atraso
+        else Quota autorizada
+            W->>GW: Envia mensagem com idempotency_key
+            GW->>P: Requisição de envio
+            alt Falha ou timeout do provedor
+                P--xGW: Erro
+                GW->>GW: Retry com backoff e circuit breaker
+                opt Fallback habilitado e consentimento no canal alternativo
+                    GW->>Bus: Publica nova mensagem no canal alternativo
+                end
+            else Aceita pelo provedor
+                P-->>GW: provider_message_id
+                GW-->>W: Aceita
+                W->>DB: Atualiza para ACEITA com provider_message_id
+            end
+        end
+    end
+
+    Note over P,Whk: Assíncrono, segundos ou minutos depois
+    P->>Whk: Webhook (delivered, read, failed, reply)
+    Whk->>Whk: Valida assinatura e persiste payload bruto
+    Whk-->>P: 200 imediato
+    Whk->>Bus: Publica ProviderStatusReceived
+    Bus->>St: Entrega evento
+    St->>DB: Atualiza status (idempotente, tolerante a ordem)
+    opt Resposta indica opt-out
+        St->>Con: Registra opt-out com origem e timestamp
+    end

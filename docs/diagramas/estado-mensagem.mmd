@@ -1,0 +1,50 @@
+---
+title: Ciclo de vida de uma mensagem
+---
+stateDiagram-v2
+    direction TB
+    [*] --> CRIADA: orquestrador expande a campanha
+
+    CRIADA --> BLOQUEADA_CONSENTIMENTO: sem opt-in vigente no canal
+    CRIADA --> ENFILEIRADA: elegível
+
+    ENFILEIRADA --> ENVIANDO: reserva por idempotency_key
+    ENFILEIRADA --> AGUARDANDO_QUOTA: quota negada
+    AGUARDANDO_QUOTA --> ENFILEIRADA: quota liberada
+    AGUARDANDO_QUOTA --> EXPIRADA: janela de envio vencida
+
+    ENVIANDO --> ENFILEIRADA: erro transitório, retry com backoff
+    ENVIANDO --> ACEITA: provedor aceitou
+    ENVIANDO --> SUBSTITUIDA_POR_FALLBACK: falha definitiva e fallback consentido
+    ENVIANDO --> FALHOU: falha definitiva sem fallback
+
+    ACEITA --> ENTREGUE: webhook delivered
+    ACEITA --> FALHOU: webhook failed
+    ENTREGUE --> LIDA: webhook read
+    ENTREGUE --> RESPONDIDA: resposta do destinatário
+    LIDA --> RESPONDIDA: resposta do destinatário
+
+    BLOQUEADA_CONSENTIMENTO --> [*]
+    EXPIRADA --> [*]
+    SUBSTITUIDA_POR_FALLBACK --> [*]
+    FALHOU --> [*]
+    ENTREGUE --> [*]
+    LIDA --> [*]
+    RESPONDIDA --> [*]
+
+    note right of BLOQUEADA_CONSENTIMENTO
+        Terminal e explícito.
+        Sem consentimento, não há envio.
+    end note
+
+    note right of SUBSTITUIDA_POR_FALLBACK
+        A mensagem original termina aqui.
+        O fallback nasce como nova mensagem
+        em CRIADA, com nova idempotency_key
+        e nova checagem de consentimento.
+    end note
+
+    note right of ENTREGUE
+        Status nunca regride. Webhook fora
+        de ordem não move ENTREGUE para ACEITA.
+    end note

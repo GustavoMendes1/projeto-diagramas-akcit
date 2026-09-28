@@ -1,0 +1,41 @@
+---
+title: Nível 1 — Contexto (C4) — Portal de Mensagens Proativas
+---
+flowchart TB
+    subgraph ext_pessoas[" "]
+        direction LR
+        operador["<b>Operador de Marketing</b><br/>Cria, agenda e acompanha campanhas"]
+        aprovador["<b>Aprovador</b><br/>Aprova campanhas antes do disparo"]
+        admin["<b>Administrador</b><br/>Gerencia canais, quotas e acessos"]
+        conformidade["<b>Conformidade / Auditoria</b><br/>Consulta consentimento e trilha de envios"]
+    end
+
+    destinatario(["<b>Destinatário</b><br/>Recebe mensagens, responde<br/>e pode fazer opt-out"])
+
+    plataforma["<b>Portal de Mensagens Proativas</b><br/>[Sistema]<br/>Cria, agenda e dispara campanhas via RCS e WhatsApp.<br/>Controla consentimento, quotas e status de entrega.<br/>Mantém trilha de auditoria imutável."]
+
+    wa["<b>BSP WhatsApp Business</b><br/>[Sistema externo]<br/>Envio de templates e mensagens;<br/>webhooks de status e respostas"]
+    rcs["<b>Agregador / Operadoras RCS</b><br/>[Sistema externo]<br/>Envio RCS; webhooks<br/>de entrega e leitura"]
+    idp["<b>Provedor de Identidade</b><br/>[Sistema externo]<br/>SSO e papéis de acesso"]
+    crm["<b>CRM / CDP</b><br/>[Sistema externo]<br/>Fonte de contatos e segmentos"]
+
+    operador -->|"Cria e agenda campanhas;<br/>acompanha resultados"| plataforma
+    aprovador -->|"Aprova ou nega"| plataforma
+    admin -->|"Configura canais e limites"| plataforma
+    conformidade -->|"Consulta consentimento<br/>e trilha de envios"| plataforma
+
+    plataforma -->|"Envia mensagens;<br/>recebe webhooks"| wa
+    plataforma -->|"Envia mensagens;<br/>recebe webhooks"| rcs
+    plataforma -->|"Autentica via SSO"| idp
+    crm -->|"Contatos e segmentos"| plataforma
+
+    wa -.->|"Entrega e resposta"| destinatario
+    rcs -.->|"Entrega e resposta"| destinatario
+
+    classDef pessoa fill:#08427b,stroke:#052e56,color:#fff
+    classDef sistema fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef externo fill:#999999,stroke:#6b6b6b,color:#fff
+    class operador,aprovador,admin,conformidade,destinatario pessoa
+    class plataforma sistema
+    class wa,rcs,idp,crm externo
+    style ext_pessoas fill:none,stroke:none

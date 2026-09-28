@@ -1,0 +1,86 @@
+---
+title: Nível 2 — Containers (C4) — Portal de Mensagens Proativas
+---
+flowchart LR
+    operador(["<b>Operador / Aprovador</b><br/>[Pessoa]"])
+    conformidade(["<b>Conformidade / Auditoria</b><br/>[Pessoa]"])
+
+    subgraph campanha["Domínio de Campanha (controle)"]
+        direction TB
+        web["<b>Portal Web</b><br/>[Container: SPA — a definir]<br/>Templates, segmentos, aprovação,<br/>agendamento e painéis"]
+        api["<b>API de Campanhas</b><br/>[Container: a definir]<br/>Regras de campanha, aprovação<br/>e consulta de resultados"]
+        sched["<b>Scheduler</b><br/>[Container: a definir]<br/>Dispara campanhas na janela agendada"]
+        campdb[("<b>DB de Campanhas</b><br/>[Container: a definir]<br/>Campanhas, templates, segmentos")]
+    end
+
+    subgraph consent["Consentimento"]
+        direction TB
+        cons["<b>Serviço de Consentimento</b><br/>[Container: a definir]<br/>Opt-in, opt-out e preferências<br/>por contato e canal"]
+        condb[("<b>Ledger de Consentimento</b><br/>[Container: append-only]<br/>Histórico com origem e timestamp")]
+    end
+
+    bus{{"<b>Broker de Eventos e Filas</b><br/>[Container: a definir]<br/>Desacopla campanha de execução;<br/>garante retentativa"}}
+
+    subgraph execucao["Domínio de Execução (disparo)"]
+        direction TB
+        orq["<b>Orquestrador de Disparo</b><br/>Expande campanha em mensagens<br/>e filtra por consentimento"]
+        quota["<b>Controle de Quotas</b><br/>Tier WhatsApp, limites RCS,<br/>janela de 24h"]
+        worker["<b>Send Workers</b><br/>Envio idempotente"]
+        gw["<b>Gateway de Canais</b><br/>Adaptadores por provedor;<br/>retry, circuit breaker, fallback"]
+        whk["<b>Webhook Ingestor</b><br/>Valida assinatura, persiste<br/>e responde 200"]
+        stp["<b>Processador de Status</b><br/>Entrega, leitura, falha e respostas"]
+        msgdb[("<b>Ledger de Mensagens</b><br/>[Container: a definir]<br/>Envios e eventos de status")]
+    end
+
+    audit[("<b>Trilha de Auditoria</b><br/>[Container: append-only]<br/>Sem UPDATE nem DELETE")]
+    obs["<b>Observabilidade</b><br/>Métricas, logs e alertas"]
+
+    idp["<b>Provedor de Identidade</b><br/>[Sistema externo]"]
+    wa["<b>BSP WhatsApp</b><br/>[Sistema externo]"]
+    rcs["<b>Agregador RCS</b><br/>[Sistema externo]"]
+
+    operador -->|"HTTPS"| web
+    conformidade -->|"HTTPS"| web
+    web -->|"JSON/HTTPS"| api
+    web -.->|"SSO"| idp
+    api --> campdb
+    api --> sched
+    api -->|"Consulta e registra"| cons
+    cons --> condb
+    api -->|"Consulta resultados"| msgdb
+
+    sched -->|"CampaignDispatchRequested"| bus
+    bus --> orq
+    orq -->|"Elegíveis"| cons
+    orq -->|"Cria mensagens PENDING"| msgdb
+    orq -->|"SendMessage"| bus
+    bus --> worker
+    worker -->|"Pede permissão"| quota
+    worker -->|"Reserva por idempotency_key"| msgdb
+    worker --> gw
+    gw --> wa
+    gw --> rcs
+
+    wa -->|"Webhooks"| whk
+    rcs -->|"Webhooks"| whk
+    whk -->|"ProviderStatusReceived"| bus
+    bus --> stp
+    stp --> msgdb
+    stp -->|"Opt-out por resposta"| cons
+
+    worker -.-> obs
+    gw -.-> obs
+    whk -.-> obs
+    stp -.-> obs
+    api -.-> audit
+    cons -.-> audit
+    stp -.-> audit
+
+    classDef pessoa fill:#08427b,stroke:#052e56,color:#fff
+    classDef container fill:#438dd5,stroke:#2e6295,color:#fff
+    classDef store fill:#438dd5,stroke:#2e6295,color:#fff
+    classDef externo fill:#999999,stroke:#6b6b6b,color:#fff
+    class operador,conformidade pessoa
+    class web,api,sched,cons,orq,quota,worker,gw,whk,stp,obs container
+    class campdb,condb,msgdb,audit,bus store
+    class idp,wa,rcs externo
